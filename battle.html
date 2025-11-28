@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Poké-Switch v7.3 (Level System Patch)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Roboto+Mono:wght@400;700&display=swap');
+    
+    body { background: #f0f2f5; margin: 0; padding: 20px; font-family: 'Roboto Mono', monospace; overflow: hidden; user-select: none; }
+    .allow-select { user-select: text !important; -webkit-user-select: text !important; }
+
+    /* 纹理 */
+    .plastic-texture { background-color: #ff3c28; background-image: radial-gradient(circle at 10% 10%, rgba(255,255,255,0.2) 0%, transparent 20%); box-shadow: inset -5px -5px 15px rgba(0,0,0,0.2), inset 5px 5px 15px rgba(255,255,255,0.1), 5px 10px 20px rgba(0,0,0,0.4); }
+    .plastic-texture-r { background-color: #0ab9e6; background-image: radial-gradient(circle at 90% 10%, rgba(255,255,255,0.2) 0%, transparent 20%); box-shadow: inset 5px -5px 15px rgba(0,0,0,0.2), inset -5px 5px 15px rgba(255,255,255,0.1), 5px 10px 20px rgba(0,0,0,0.4); }
+    .paper-pattern { background-image: repeating-linear-gradient(white 0px, white 24px, #e5e7eb 25px); background-color: #fff; }
+    .custom-scrollbar { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d1d5db #f3f4f6; }
+
+    /* 动画集 */
+    @keyframes shake { 0% { transform: translate(0, 0); } 25% { transform: translate(-5px, 0); } 75% { transform: translate(5px, 0); } 100% { transform: translate(0, 0); } }
+    .shake-anim { animation: shake 0.3s ease-in-out; }
+    
+    @keyframes flash-red { 0% { filter: none; } 50% { filter: sepia(1) hue-rotate(-50deg) saturate(3); } 100% { filter: none; } }
+    .flash-anim { animation: flash-red 0.3s ease-in-out; }
+    
+    @keyframes tera-shine { 
+        0% { filter: brightness(1); } 
+        50% { filter: brightness(1.3) hue-rotate(15deg) drop-shadow(0 0 10px cyan); transform: scale(1.05); } 
+        100% { filter: brightness(1.1) drop-shadow(0 0 5px cyan); } 
+    }
+    .tera-anim { animation: tera-shine 1.5s ease-out forwards; border: 2px solid cyan; border-radius: 50%; }
+
+    @keyframes faint-down {
+        0% { transform: translateY(0); opacity: 1; filter: grayscale(0); }
+        100% { transform: translateY(20px); opacity: 0; filter: grayscale(1); }
+    }
+    .faint-anim { animation: faint-down 1.5s ease-in forwards; }
+    @keyframes buff-anim { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.1); filter: brightness(1.3); } 100% { transform: scale(1); } }
+    .buff-effect { animation: buff-anim 0.5s ease-out; }
+
+    /* 图标与颜色 */
+    .ball-icon { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #333; background: linear-gradient(to bottom, #f00 50%, #fff 50%); position: relative; box-shadow: 1px 1px 1px rgba(0,0,0,0.3); }
+    .ball-icon.fainted { filter: grayscale(100%) brightness(0.6); opacity: 0.5; background: #555; }
+    .status-badge { font-size: 9px; padding: 1px 3px; border-radius: 3px; color: white; margin-right: 2px; }
+    .status-psn { background: #a040a0; } .status-tox { background: #a040a0; border: 1px solid #fff; }
+    .status-par { background: #f8d030; color: #444; } .status-slp { background: #8c888c; }
+    .status-brn { background: #f08030; } .status-frz { background: #98d8d8; color: #444; }
+
+    .bg-type-Normal { background-color: #A8A77A; color: #fff; } .bg-type-Fire { background-color: #EE8130; color: #fff; } .bg-type-Water { background-color: #6390F0; color: #fff; } .bg-type-Electric { background-color: #F7D02C; color: #444; } .bg-type-Grass { background-color: #7AC74C; color: #fff; } .bg-type-Ice { background-color: #96D9D6; color: #444; } .bg-type-Fighting { background-color: #C22E28; color: #fff; } .bg-type-Poison { background-color: #A33EA1; color: #fff; } .bg-type-Ground { background-color: #E2BF65; color: #fff; } .bg-type-Flying { background-color: #A98FF3; color: #fff; } .bg-type-Psychic { background-color: #F95587; color: #fff; } .bg-type-Bug { background-color: #A6B91A; color: #fff; } .bg-type-Rock { background-color: #B6A136; color: #fff; } .bg-type-Ghost { background-color: #735797; color: #fff; } .bg-type-Dragon { background-color: #6F35FC; color: #fff; } .bg-type-Dark { background-color: #705746; color: #fff; } .bg-type-Steel { background-color: #B7B7CE; color: #444; } .bg-type-Fairy { background-color: #D685AD; color: #fff; }
+
+    .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Setup Modal -->
+<div id="setup-modal" class="fixed inset-0 bg-gray-900/90 z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="bg-white p-6 rounded-xl shadow-2xl w-[700px] border-4 border-blue-500">
+        <h2 class="text-2xl font-bold mb-4 text-center text-gray-800">💎 第九世代对战配置 (Gen 9)</h2>
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div>
+                <label class="block text-sm font-bold mb-1 text-blue-600">我方队伍 (Player)</label>
+                <textarea id="p1-team-input" class="w-full h-48 p-2 text-xs border-2 border-gray-300 rounded font-mono bg-gray-50 focus:border-blue-500 outline-none resize-none allow-select" placeholder="粘贴 Showdown 格式队伍...">
+Gardevoir @ Gardevoirite
+Ability: Trace
+Level: 50
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Hyper Voice
+- Psyshock
+- Moonblast
+- Mystical Fire
+
+Charizard @ Charizardite X
+Ability: Blaze
+Level: 100
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Flare Blitz
+- Dragon Claw
+- Roost
+- Dragon Dance
+
+Pikachu
+Level: 5
+- Thunderbolt
+                </textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-bold mb-1 text-red-600">敌方队伍 (Opponent)</label>
+                <textarea id="p2-team-input" class="w-full h-48 p-2 text-xs border-2 border-gray-300 rounded font-mono bg-gray-50 focus:border-red-500 outline-none resize-none allow-select" placeholder="粘贴 Showdown 格式队伍...">
+Blastoise @ Blastoisinite
+Ability: Torrent
+Level: 50
+EVs: 252 SpA / 4 SpD / 252 Spe
+Modest Nature
+- Water Pulse
+- Aura Sphere
+- Dark Pulse
+- Ice Beam
+
+Mewtwo
+Level: 70
+Ability: Pressure
+- Psystrike
+                </textarea>
+            </div>
+        </div>
+        <div class="flex gap-4">
+            <button onclick="window.debugTeamParser()" class="bg-gray-500 hover:bg-gray-400 text-white font-bold py-4 px-6 rounded-lg shadow-lg">🔍 仅检查格式</button>
+            <button onclick="window.initBattle()" class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold py-4 rounded-lg shadow-lg transform transition hover:scale-[1.02] active:scale-95 text-lg">🚀 启动引擎 (Gen 9)</button>
+        </div>
+        <div id="debug-output" class="mt-2 text-[10px] text-red-500 font-mono h-12 overflow-y-auto hidden"></div>
+    </div>
+</div>
+
+<div id="app-scaler" class="w-full flex flex-col items-center transition-transform duration-200 origin-top mt-4" style="transform: scale(1.0);">
+    
+    <!-- 顶部 UI -->
+    <div class="w-[600px] flex justify-between items-end px-4 z-10 -mb-2">
+        <!-- P1 -->
+        <div class="flex flex-col items-start w-1/2">
+            <div id="p1-balls" class="flex gap-1 mb-1 pl-1"></div>
+            <div class="bg-gray-800 text-white px-3 py-2 rounded-t-lg rounded-br-lg border-l-4 border-blue-500 shadow-md w-full max-w-[240px] h-20 flex flex-col justify-between">
+                <div>
+                    <!-- 修改点：使用 flex-1 和 min-w-0 确保 truncate 生效，同时 Lv 标签不被挤压 -->
+                    <div class="flex justify-between items-baseline gap-2 mb-1">
+                        <div class="flex items-baseline gap-1 min-w-0 flex-1">
+                            <span id="p1-name" class="font-bold text-xs truncate block">P1</span>
+                            <span id="p1-level" class="text-[9px] text-yellow-400 font-mono font-bold flex-shrink-0">Lv.--</span>
+                        </div>
+                        <div id="p1-types" class="flex flex-shrink-0 text-sm ml-1"></div>
+                    </div>
+                    <div id="p1-stats" class="flex flex-wrap gap-1 text-[9px] mb-1 h-4"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center px-1 mb-0.5">
+                        <span id="p1-ability" class="text-[9px] text-purple-300 font-bold italic truncate max-w-[100px]">-</span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-700 rounded-full overflow-hidden border border-gray-600">
+                        <div id="p1-hp-bar" class="h-full bg-green-500 transition-all duration-500" style="width: 100%"></div>
+                    </div>
+                    <div class="flex justify-between items-center mt-0.5">
+                        <span id="p1-item" class="text-[9px] text-yellow-300 truncate max-w-[80px]"></span>
+                        <span id="p1-hp-text" class="text-[8px] font-mono text-gray-300">--/--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- P2 -->
+        <div class="flex flex-col items-end w-1/2">
+            <div id="p2-balls" class="flex gap-1 mb-1 pr-1"></div>
+            <div class="bg-gray-800 text-white px-3 py-2 rounded-t-lg rounded-bl-lg border-r-4 border-red-500 shadow-md w-full max-w-[240px] h-20 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-between items-baseline gap-2 mb-1">
+                        <div id="p2-types" class="flex flex-shrink-0 text-sm mr-1"></div>
+                        <!-- 修改点：P2 的名字和等级布局 -->
+                        <div class="flex items-baseline gap-1 min-w-0 flex-1 justify-end">
+                            <span id="p2-level" class="text-[9px] text-yellow-400 font-mono font-bold flex-shrink-0">Lv.--</span>
+                            <span id="p2-name" class="font-bold text-xs truncate block">P2</span>
+                        </div>
+                    </div>
+                    <div id="p2-stats" class="flex flex-wrap gap-1 text-[9px] mb-1 h-4 justify-end"></div>
+                </div>
+                <div>
+                    <div class="flex justify-between items-center px-1 mb-0.5">
+                        <span id="p2-ability" class="text-[9px] text-purple-300 font-bold italic truncate max-w-[100px] ml-auto">-</span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-700 rounded-full overflow-hidden border border-gray-600">
+                        <div id="p2-hp-bar" class="h-full bg-green-500 transition-all duration-500" style="width: 100%"></div>
+                    </div>
+                    <div class="text-left text-[8px] mt-0.5 font-mono text-gray-300"><span id="p2-hp-text">--/--</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 屏幕与手柄 -->
+    <div class="flex items-start justify-center z-20">
+        <!-- 左 Joy-Con -->
+        <div class="w-24 plastic-texture rounded-l-[40px] shadow-inner border-r border-black/20 h-[360px] p-4 flex flex-col items-center">
+            <div class="text-[9px] font-bold text-white mb-2 opacity-80 border-b border-white/30 w-full text-center pb-1">FIELD</div>
+            <div id="field-weather" class="text-2xl text-white text-center mb-4 min-h-[30px] filter drop-shadow-md"></div>
+            <div id="field-terrain" class="text-xl text-white text-center mb-4 min-h-[25px] filter drop-shadow-md"></div>
+            <div class="text-[9px] font-bold text-white mb-2 opacity-80 border-b border-white/30 w-full text-center pb-1">MY SIDE</div>
+            <div id="p1-side-conditions" class="text-[8px] text-white text-center flex flex-col gap-1"></div>
+        </div>
+
+        <!-- 中间屏幕 -->
+        <div id="screen-frame" class="relative w-[600px] bg-white shadow-2xl z-20 overflow-hidden border-y-[14px] border-x-[8px] border-black rounded-sm ring-1 ring-gray-800 transition-all duration-300 h-[320px]">
+            <div id="scene-bg" class="absolute inset-0 bg-cover bg-center transition-all duration-500" style="background-image: url('https://play.pokemonshowdown.com/fx/bg-beach.jpg');"></div>
+            <div class="absolute inset-0 z-10 flex justify-between items-end px-12 pb-8">
+                <div class="absolute top-12 right-20 flex flex-col items-center"><img id="p2-img" src="" class="w-32 h-32 object-contain drop-shadow-lg opacity-0 transition-opacity duration-500"></div>
+                <div class="absolute bottom-4 left-16 flex flex-col items-center z-20"><img id="p1-img" src="" class="w-40 h-40 object-contain drop-shadow-2xl opacity-0 transition-opacity duration-500"></div>
+            </div>
+
+            <!-- 菜单层 -->
+            <div id="menu-layer" class="absolute bottom-0 right-0 p-1 z-40 flex flex-col items-end gap-2 hidden">
+                <div id="main-menu" class="grid grid-cols-2 gap-2 w-48 mb-2 mr-2">
+                    <button onclick="window.uiShowMoves()" class="col-span-2 bg-red-600 hover:bg-red-500 text-white py-2 rounded-lg font-bold text-sm shadow border-b-4 border-red-800 active:border-b-0 active:translate-y-1 transition-all">⚔️ 战斗</button>
+                    <button onclick="window.uiShowGimmicks()" class="bg-purple-600 hover:bg-purple-500 text-white py-1.5 rounded font-bold text-[10px] shadow border-b-4 border-purple-800 active:border-b-0 active:translate-y-1 transition-all">💎 系统</button>
+                    <button onclick="window.uiShowSwitch()" class="bg-blue-500 hover:bg-blue-400 text-white py-1.5 rounded font-bold text-[10px] shadow border-b-4 border-blue-700 active:border-b-0 active:translate-y-1 transition-all">🦄 精灵</button>
+                    <button class="col-span-2 bg-gray-600 text-gray-200 py-1.5 rounded font-bold text-[10px] opacity-50 cursor-not-allowed">🏃 逃跑</button>
+                </div>
+
+                <!-- 技能菜单 -->
+                <div id="battle-moves" class="hidden w-72 bg-gray-900/95 p-1.5 rounded-lg backdrop-blur-sm border border-gray-600">
+                    <div class="flex justify-between items-center mb-1 px-1">
+                        <span class="text-[9px] text-gray-300">选择招式:</span>
+                        <button class="text-[9px] text-red-400 hover:text-red-300" onclick="window.uiBackToMenu()">✕</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <button id="move-btn-1" onclick="window.sendMove(1)" class="move-slot w-full"></button>
+                        <button id="move-btn-2" onclick="window.sendMove(2)" class="move-slot w-full"></button>
+                        <button id="move-btn-3" onclick="window.sendMove(3)" class="move-slot w-full"></button>
+                        <button id="move-btn-4" onclick="window.sendMove(4)" class="move-slot w-full"></button>
+                    </div>
+                </div>
+
+                <div id="gimmick-menu" class="hidden w-40 bg-purple-900/95 p-2 rounded-lg backdrop-blur-sm border border-purple-600 mb-2 mr-2">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] text-purple-200">特殊系统:</span>
+                        <button class="text-[10px] text-red-400 hover:text-red-300" onclick="window.uiBackToMenu()">✕</button>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <label class="flex items-center space-x-2 cursor-pointer bg-black/30 p-2 rounded hover:bg-black/50 transition">
+                            <input type="checkbox" id="check-tera" class="form-checkbox text-cyan-400 rounded h-4 w-4">
+                            <span class="text-xs text-white font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">💎 太晶化 (Tera)</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer bg-black/30 p-2 rounded hover:bg-black/50 transition">
+                            <input type="checkbox" id="check-mega" class="form-checkbox text-pink-500 rounded h-4 w-4">
+                            <span class="text-xs text-white font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">MEGA 进化</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="switch-menu" class="hidden w-48 bg-blue-900/95 p-2 rounded-lg backdrop-blur-sm border border-blue-600 mb-2 mr-2">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-gray-300">选择交换:</span>
+                        <button id="btn-cancel-switch" class="text-[10px] text-red-400 hover:text-red-300" onclick="window.uiBackToMenu()">✕</button>
+                    </div>
+                    <div class="flex flex-col gap-1" id="pokemon-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右 Joy-Con -->
+        <div class="w-24 plastic-texture-r rounded-r-[40px] shadow-inner border-l border-black/20 h-[360px] p-4 flex flex-col items-center">
+            <div class="text-[9px] font-bold text-white mb-2 opacity-80 border-b border-white/30 w-full text-center pb-1">FOE SIDE</div>
+            <div id="p2-side-conditions" class="text-[8px] text-white text-center flex flex-col gap-1"></div>
+        </div>
+    </div>
+
+    <!-- 日志区域 -->
+    <div class="w-[560px] relative flex flex-col items-center -mt-4">
+        <div class="w-[520px] h-4 bg-black/40 blur-sm rounded-full"></div>
+        <div class="paper-pattern w-full h-[240px] rounded-b-xl shadow-lg border border-gray-300 relative overflow-hidden pb-4">
+            <div class="absolute top-0 left-0 right-0 h-3 bg-white z-10" style="background: linear-gradient(135deg, transparent 75%, rgba(0,0,0,0.05) 75%) 0 0, linear-gradient(-135deg, transparent 75%, rgba(0,0,0,0.05) 75%) 0 0; background-size: 10px 10px;"></div>
+            <div id="log-container" class="allow-select mt-6 px-6 h-full custom-scrollbar flex flex-col gap-2 text-xs text-gray-700 font-mono">
+                <div class="pl-2 border-l-2 border-gray-300 text-gray-400">请配置队伍并开始战斗...</div>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="dist/bundle.js"></script>
+</body>
+</html>

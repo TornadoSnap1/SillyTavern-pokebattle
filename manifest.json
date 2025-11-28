@@ -1,0 +1,9 @@
+{
+    "name": "st-ps宝可梦战斗",
+    "display_name": "st-ps宝可梦战斗",
+    "version": "1.0.0",
+    "author": "龙卷姜饼云",
+    "description": "A fully local Pokemon battle engine embedded in SillyTavern.",
+    "js": "index.js",
+    "css": "style.css"
+}
