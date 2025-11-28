@@ -1,6 +1,5 @@
 pokemon showdown-SillyTavern 宝可梦对战扩展 (v1.0)
 
-作者：龙卷姜饼云
 
 目前还是实验版，有问题见谅。
 
