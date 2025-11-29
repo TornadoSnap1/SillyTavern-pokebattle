@@ -1,5 +1,18 @@
-// index.js (v6.4 Final - Anti-Plugin Mode)
-console.log("🛡️ [Poké-Switch] 插件对抗模式 (v6.4) 已启动");
+// index.js (v6.5 Final - Auto-Navigation Edition)
+console.log("🛡️ [Poké-Switch] 插件对抗模式 (v6.5 - 动态路径版) 已启动");
+
+// ==========================================
+// 0. 动态路径获取 (The GPS)
+// ==========================================
+
+const extensionRoot = (() => {
+    // 尝试获取当前模块的 URL
+    const src = import.meta.url;
+    // 去掉最后的文件名 '/index.js'，只保留目录路径
+    return src.substring(0, src.lastIndexOf('/'));
+})();
+
+console.log(`📍 [Poké-Switch] 扩展根目录定位于: ${extensionRoot}`);
 
 // ==========================================
 // 1. 战斗启动器 (Iframe Launcher)
@@ -27,9 +40,16 @@ window.launchPokemonBattle = function(encodedData) {
     `;
 
     // --- 创建 Iframe ---
-    // 路径指向扩展目录下的 battle.html
     const iframe = document.createElement('iframe');
-    iframe.src = "scripts/extensions/st-poke-battle/battle.html"; 
+    
+    // 🔧 关键修改：使用动态计算出的路径
+    // 假设 battle.html 就在 index.js 旁边
+    iframe.src = `${extensionRoot}/battle.html`; 
+    
+    // 如果您的 battle.html 藏在 scripts/extensions/st-poke-battle/ 里面
+    // 而 index.js 在外层，可能需要调整。但根据您发的 manifest，它们应该是在一起的。
+    // 如果 battle.html 在 dist 文件夹里，就改成 `${extensionRoot}/dist/battle.html`
+    
     iframe.style.cssText = `
         width: 95%; height: 90%; border: none; 
         border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
@@ -211,7 +231,6 @@ window.addEventListener('message', async (event) => {
 
     // 3. 构建战报文本 (Prompt Engineering)
     // 我们要把它包装成一种 AI 容易理解的格式
-    // 这里我们决定把它伪装成一条 "System Note" 或者 "User Note"
     
     const statusText = report.isVictory ? "胜利 (Victory)" : "失败 (Defeat)";
     const noteText = report.userNote ? `\n玩家备注/战利品: ${report.userNote}` : "";
@@ -226,26 +245,20 @@ ${noteText}
 `.trim();
 
     // 4. 调用 SillyTavern API 发送消息
-    // 我们使用 sendSysMessage (如果是新版 ST) 或者模拟用户发送
-    // 为了稳妥，我们这里使用 "插入到输入框并自动发送" 的策略，
-    // 或者直接调用 SillyTavern 的上下文插入 API。
-    
-    // --- 策略 A: 模拟用户发送 (最通用) ---
-    // 优点：兼容性好，能触发 lorebook，就像玩家亲手发的一样
-    // 缺点：会显示在聊天记录里 (但这正好也是我们想要的，留个底)
+    // 优先尝试 SillyTavern 的新版 Context API (如果有)
+    // 但为了通用性，我们还是用 UI 模拟法
     
     const textarea = document.querySelector('#send_textarea');
     const sendBtn = document.querySelector('#send_but');
     
     if (textarea && sendBtn) {
-        // 4.1 填入文本
-        // 注意：为了不让这段话看起来太像代码，我们可以加个括号
-        // 或者我们可以把它作为 "OOC" (Out Of Character) 发送
+        // 4.1 填入文本 (作为 OOC 或 System Note)
         textarea.value = `(系统战报: ${statusText}。我方剩余: ${report.p1Status}。${report.userNote || ""})`;
         
-        // 4.2 触发 input 事件 (让 React/Vue 知道值变了)
+        // 4.2 触发 input 事件 (唤醒前端框架)
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        textarea.focus(); // 聚焦一下，确保活跃
         
         // 4.3 延迟一点点，然后点击发送
         setTimeout(() => {
@@ -254,7 +267,9 @@ ${noteText}
         }, 200);
     } else {
         console.error("❌ 找不到 SillyTavern 的输入框，无法回传结果！");
-        alert("战报已复制到剪贴板，请手动粘贴！\n" + promptText);
+        // 备用方案：直接复制到剪贴板
+        navigator.clipboard.writeText(promptText).then(() => {
+             alert("⚠️ 自动发送失败，战报已复制到剪贴板。\n请手动粘贴并发送！");
+        });
     }
 });
-
