@@ -1,5 +1,67 @@
-// index.js (v6.5 Final - Auto-Navigation Edition)
-console.log("🛡️ [Poké-Switch] 插件对抗模式 (v6.5 - 动态路径版) 已启动");
+import { createResultGate, resultLabel } from './battle-host.mjs';
+let activeBattle = null;
+const acceptBattleResult = createResultGate();
+// 字符串感知地剥离 // 与 /* */ 注释，避免模型照抄提示词示例里的注释导致 JSON.parse 失败
+function stripJsonComments(raw) {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; out += ch; continue; }
+    if (ch === '/' && raw[i + 1] === '/') {
+      while (i < raw.length && raw[i] !== '\n') i++;
+      out += '\n';
+      continue;
+    }
+    if (ch === '/' && raw[i + 1] === '*') {
+      i += 2;
+      while (i < raw.length && !(raw[i] === '*' && raw[i + 1] === '/')) i++;
+      i++;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function sanitizeJsonString(raw) {
+  if (!raw) return '';
+  let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  clean = stripJsonComments(clean);
+  clean = clean.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+
+  let inString = false;
+  let result = '';
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (ch === '"' && (i === 0 || clean[i - 1] !== '\\')) {
+      inString = !inString;
+      result += ch;
+    } else if (inString && (ch === '\n' || ch === '\r')) {
+      if (ch === '\r' && clean[i + 1] === '\n') {
+        result += '\\n';
+        i++;
+      } else {
+        result += '\\n';
+      }
+    } else {
+      result += ch;
+    }
+  }
+  result = result.replace(/,\s*([\}\]])/g, '$1');
+  return result;
+}
+
+// index.js (1.1.0 · Switch UI + hosted battle)
+console.log("🛡️ [Poké-Switch] 插件对抗模式 (1.1.0 - Switch 界面) 已启动");
 
 // ==========================================
 // 0. 动态路径获取 (The GPS)
@@ -29,6 +91,7 @@ window.launchPokemonBattle = function(encodedData) {
 
     console.log("🚀 [Poké-Switch] 启动战斗 Iframe...", battleData);
 
+    if (activeBattle) { activeBattle.overlay.remove(); activeBattle=null; }
     // --- 创建遮罩层 ---
     const overlay = document.createElement('div');
     overlay.id = 'pk-battle-overlay';
@@ -44,7 +107,7 @@ window.launchPokemonBattle = function(encodedData) {
     
     // 🔧 关键修改：使用动态计算出的路径
     // 假设 battle.html 就在 index.js 旁边
-    iframe.src = `${extensionRoot}/battle.html`; 
+    iframe.src = `${extensionRoot}/battle-switch-studio.html?host=1`; 
     
     // 如果您的 battle.html 藏在 scripts/extensions/st-poke-battle/ 里面
     // 而 index.js 在外层，可能需要调整。但根据您发的 manifest，它们应该是在一起的。
@@ -56,6 +119,9 @@ window.launchPokemonBattle = function(encodedData) {
         background: #202020;
     `;
 
+    iframe.title='宝可梦对战 · Switch';
+    const session={iframe,overlay,origin:new URL(extensionRoot).origin,handled:false};
+    activeBattle=session;
     // --- 创建关闭按钮 ---
     const closeBtn = document.createElement('button');
     closeBtn.innerHTML = "❌ 结束战斗 (Close)";
@@ -65,6 +131,7 @@ window.launchPokemonBattle = function(encodedData) {
         font-weight: bold; cursor: pointer; font-size: 14px;
     `;
     closeBtn.onclick = function() {
+        if(activeBattle===session)activeBattle=null;
         overlay.style.opacity = '0';
         setTimeout(() => {
             if(document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -77,7 +144,7 @@ window.launchPokemonBattle = function(encodedData) {
         setTimeout(() => {
             const message = { type: 'START_BATTLE', payload: battleData };
             console.log("📤 [Poké-Switch] 发送 START_BATTLE 指令");
-            iframe.contentWindow.postMessage(message, '*');
+            if(activeBattle===session && overlay.isConnected)iframe.contentWindow.postMessage(message, session.origin);
         }, 500);
     };
 
@@ -128,13 +195,21 @@ function processMessageNode(node) {
     
     let battleData;
     try { 
-        battleData = JSON.parse(txt.value); 
+        battleData = JSON.parse(sanitizeJsonString(txt.value)); 
     } catch (e) { 
         console.error("❌ [Poké-Switch] JSON 解析失败:", e); 
         return; 
     }
 
     // 4. 标记已处理
+    
+    // 严格按规范校验对战模式 (Strict Schema)
+    if (battleData && battleData.p1 && battleData.p2) {
+        const rawMode = battleData.mode || battleData.gameType || battleData.battleType;
+        battleData.mode = (rawMode && String(rawMode).toLowerCase().includes('double')) ? 'doubles' : 'singles';
+        battleData.gen = battleData.gen ? String(battleData.gen).toLowerCase() : 'gen9';
+    }
+
     node.setAttribute('data-pk-processed', 'true');
 
     // 5. 隐藏丑陋的原始文本块 (尝试查找并隐藏)
@@ -159,23 +234,24 @@ function processMessageNode(node) {
     btnContainer.className = 'pk-battle-btn-container'; // 身份证
     btnContainer.style.cssText = 'text-align: center; margin-top: 10px; clear: both;';
     
-    btnContainer.innerHTML = `
-        <button onclick="window.launchPokemonBattle('${safeDataStr}')" 
-            style="
-                display: inline-block; padding: 12px 24px; 
-                background: linear-gradient(to right, #dc2626, #991b1b); 
-                color: white; border-radius: 8px; border: none; 
-                cursor: pointer; font-weight: bold; 
-                box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-                font-family: 'Roboto', sans-serif; font-size: 14px;
-                transition: transform 0.1s;
-            "
-            onmousedown="this.style.transform='scale(0.95)'" 
-            onmouseup="this.style.transform='scale(1)'"
-        >
-            ⚔️ 遭遇战！点击开始
-        </button>
-    `;
+    // 用 DOM 事件绑定代替内联 onclick：
+    // 1) encodeURIComponent 不会转义单引号，Farfetch'd / King's Rock 会把内联属性截断；
+    // 2) 队伍文本来自模型输出，不能再拼进 HTML 属性里。
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '⚔️ 遭遇战！点击开始';
+    btn.style.cssText = [
+        'display: inline-block', 'padding: 12px 24px',
+        'background: linear-gradient(to right, #dc2626, #991b1b)',
+        'color: white', 'border-radius: 8px', 'border: none', 'cursor: pointer',
+        'font-weight: bold', 'box-shadow: 0 4px 6px rgba(0,0,0,0.2)',
+        "font-family: 'Roboto', sans-serif", 'font-size: 14px', 'transition: transform 0.1s'
+    ].join('; ');
+    btn.addEventListener('mousedown', () => { btn.style.transform = 'scale(0.95)'; });
+    btn.addEventListener('mouseup', () => { btn.style.transform = 'scale(1)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.transform = 'scale(1)'; });
+    btn.addEventListener('click', () => window.launchPokemonBattle(safeDataStr));
+    btnContainer.appendChild(btn);
 
     // 7. 追加到消息底部 (appendChild 不会破坏上面的 DOM)
     node.appendChild(btnContainer);
@@ -213,10 +289,9 @@ setTimeout(() => {
 // ==========================================
 
 window.addEventListener('message', async (event) => {
-    // 1. 安全检查
-    if (!event.data || event.data.type !== 'BATTLE_RESULT') return;
-
-    const report = event.data.payload;
+    const report=acceptBattleResult(event,activeBattle);
+    if(!report)return;
+    activeBattle=null;
     console.log("📬 [Poké-Switch] 收到子窗口战报:", report);
 
     // 2. 销毁战斗窗口 (Iframe)
@@ -232,7 +307,7 @@ window.addEventListener('message', async (event) => {
     // 3. 构建战报文本 (Prompt Engineering)
     // 我们要把它包装成一种 AI 容易理解的格式
     
-    const statusText = report.isVictory ? "胜利 (Victory)" : "失败 (Defeat)";
+    const statusText = resultLabel(report);
     const noteText = report.userNote ? `\n玩家备注/战利品: ${report.userNote}` : "";
     
     const promptText = `
@@ -241,7 +316,7 @@ window.addEventListener('message', async (event) => {
 - 我方状态: ${report.p1Status}
 - 敌方状态: ${report.p2Status}
 ${noteText}
-- 指令: 请根据以上战斗结果，继续描写剧情。如果玩家赢了，请描写战胜后的喜悦或战利品获取；如果输了，请描写挫败感或逃跑。
+- 指令: 请根据以上战斗结果，继续描写剧情。如果玩家赢了，请描写战胜后的喜悦或战利品获取；如果输了，请描写挫败感或逃跑；如果平局，请按平局续写。
 `.trim();
 
     // 4. 调用 SillyTavern API 发送消息
@@ -253,7 +328,7 @@ ${noteText}
     
     if (textarea && sendBtn) {
         // 4.1 填入文本 (作为 OOC 或 System Note)
-        textarea.value = `(系统战报: ${statusText}。我方剩余: ${report.p1Status}。${report.userNote || ""})`;
+        textarea.value = `(系统战报: ${statusText}。我方战况: ${report.p1Status}。${report.userNote || ""})`;
         
         // 4.2 触发 input 事件 (唤醒前端框架)
         textarea.dispatchEvent(new Event('input', { bubbles: true }));

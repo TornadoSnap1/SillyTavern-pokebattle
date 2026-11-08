@@ -1,0 +1,24 @@
+{
+  "name": "pokemonlab",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "build": "webpack --config webpack.config.js",
+    "translations:build": "node scripts/build-translations.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "AGPL-3.0-only",
+  "description": "",
+  "dependencies": {
+    "@pkmn/img": "^0.3.1",
+    "@pkmn/sets": "^5.2.0",
+    "@pkmn/sim": "^0.10.2",
+    "@pkmn/streams": "^1.1.0",
+    "buffer": "^6.0.3",
+    "process": "^0.11.10",
+    "webpack": "^5.103.0",
+    "webpack-cli": "^6.0.1"
+  }
+}

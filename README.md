@@ -1,53 +1,63 @@
-pokemon showdown-SillyTavern 宝可梦对战扩展 (v1.0)
+# st-ps 宝可梦战斗 · 1.1.0
 
+基于 Pokémon Showdown 本地模拟核心的 SillyTavern 扩展。此次采用 Switch 第一版界面；战斗计算不调用 LLM。
 
-目前还是实验版，有问题见谅。
+## 安装与更新
 
-1，它能做什么？
-负责silly tavern宝可梦卡片的，基于pokemon showdown的战斗系统。ai按格式输出战斗信息时，可以通过此扩展渲染为战斗面板。其实类似于一个正则，但是把ps战斗核心塞进正则不太可能。
-由于是基于pokemon showdown，所以可以实现几乎完全还原的战斗逻辑。过程不需要llm参与战斗，因此节省token和时间，并且避免幻觉和计算错误。
+将本目录的文件放在 GitHub 仓库根目录（manifest.json、index.js 与 dist 必须同级）。SillyTavern 扩展安装使用该仓库地址，安装后刷新页面。更新已有仓库时覆盖同名文件并添加新文件；不要只上传 ZIP 或把整个目录再套一层。
 
-2，工作流程：
-（1）通过在世界书中设置prompt，让ai按格式将ps格式输出战斗信息，包裹在[pkbattlestart]和 [pkbattleend]之间，扩展会用于输出战斗面板，下面是prompt示例，请根据自己的宝可梦卡片决定实际提示词。
-（2）战斗全程在面板中实现，目前单打逻辑基本上完全实现，并且设置了简单的宝可梦倒下动画等，方便视觉观察。
-（3）结束后，会将战斗胜利方、当前队伍宝可梦血量百分比以及你自己的额外输入发给原对话。可以在原卡片世界书设置提示词，引导ai对战斗结果做出合理的反应（奖励、角色反应等）
+本包保留原作者信息与 LICENSE，包含可运行构建产物、第三方声明和 source 下的开发源码。
 
-3。示例提示词：
-### JSON 格式规范 (Strict JSON Schema)
-必须严格遵守 JSON 语法，不得出现 JSON 无法解析的字符。
+## 功能
 
-- **包裹标签**：数据必须位于 `[pkbattlestart]` 和 `[pkbattleend]` 之间。
-- **team 字段**：
-  - 这是一个**单行字符串**。
-  - 必须使用 **Pokémon Showdown Export Format**。
-  - **关键规则**：字符串内部的所有换行，**必须**显式写为 `\n` 字符。**绝对不要**在 JSON 字符串内部直接回车换行。
-  - 多只宝可梦之间，必须使用 **两个** `\n` (`\n\n`) 进行分隔。
+- 第一版 Switch 界面、中文名称、属性色招式、大按钮、纸带日志和回合摘要。
+- 单打、双打、目标选择、换人，以及规则和宝可梦允许时的 Mega / 太晶 / 极巨。
+- 携带物公开信息、天气/场地/异常与能力变化说明；说明资料未完全汉化时保留英文。
+- 基础敌方 AI、演出速度与跳过、可选音效。
+- 嵌入模式只用宿主传入队伍；隐藏试玩场景、队伍配置、重新开始和设计切换。
+- 结算区分胜利、失败、平局；仅接受当前战斗 iframe、相同来源的有效战报，按 battleId 防重复。
 
-### 队伍格式详解 (Showdown Format Explanation)
-每一只宝可梦的数据块应遵循以下结构（注意 `\n`）：
+不包含投球捕捉、背包消耗或冒险 HP 同步。开局按引擎默认满血，结束战报为剧情结果，不是存档血量回写。
 
-1. **首行**: `Pokémon Name @ Item Name` (如果没有道具，只写名字，不要写 `@`)
-2. **特性**: `Ability: Ability Name`
-3. **等级**: `Level: XX` 
-4. **努力值**: `EVs: 252 Atk / 4 Def / 252 Spe` (可选，用 `/` 分隔)
-5. **性格**: `Nature Name Nature` (例如 `Jolly Nature`)
-6. **招式**: `- Move Name` (每行一个，最多4个)
+## 世界书输出格式
 
-### 完整输出示例 (Full Example)
+将[通用战斗提示词](BATTLE-PROTOCOL.zh-CN.md)全文放进模型可见的系统提示或世界书，替换已有的战斗输出规则，避免两套格式冲突。它只约束插件协议，不依赖特定角色卡、世界观或 MVU。
 
+插件识别 `[pkbattlestart]` 与 `[pkbattleend]`，本次保持该标签协议。它不识别网页宿主的 `<battle>` 标签。
+
+team 使用 Showdown 队伍文本的 JSON 字符串，换行写作 \n，多只宝可梦之间使用 \n\n。名字、招式、特性、道具使用引擎支持的英文标识；界面显示会翻译为中文。
+
+```text
 [pkbattlestart]
 {
-  "p1": {
-    "name": "{{user}}",
-    "team": "Pikachu @ Light Ball\nAbility: Lightning Rod\nLevel: 50\nEVs: 252 SpA / 4 SpD / 252 Spe\nTimid Nature\n- Thunderbolt\n- Surf\n- Play Rough\n- Nasty Plot\n\nCharizard @ Charizardite X\nAbility: Blaze\nLevel: 52\nEVs: 252 Atk / 4 SpD / 252 Spe\nJolly Nature\n- Flare Blitz\n- Dragon Claw\n- Roost\n- Dragon Dance\n\nGreninja @ Life Orb\nAbility: Protean\nLevel: 50\nEVs: 252 SpA / 4 Atk / 252 Spe\nNaive Nature\n- Hydro Pump\n- Ice Beam\n- Gunk Shot\n- Spikes\n\nLucario\nAbility: Inner Focus\nLevel: 48\nEVs: 252 Atk / 252 Spe\nAdamant Nature\n- Close Combat\n- Bullet Punch\n- Swords Dance\n- Extreme Speed\n\nSylveon @ Leftovers\nAbility: Pixilate\nLevel: 49\nEVs: 252 HP / 252 SpA / 4 SpD\nModest Nature\n- Hyper Voice\n- Wish\n- Protect\n- Calm Mind"
-  },
-  "p2": {
-    "name": "Ace Trainer Cool Guy",
-    "team": "Garchomp @ Rocky Helmet\nAbility: Rough Skin\nLevel: 55\nEVs: 252 Atk / 4 SpD / 252 Spe\nJolly Nature\n- Earthquake\n- Dragon Claw\n- Stealth Rock\n- Swords Dance\n\nTyranitar @ Assault Vest\nAbility: Sand Stream\nLevel: 54\nEVs: 252 HP / 252 Atk / 4 SpD\nAdamant Nature\n- Stone Edge\n- Crunch\n- Pursuit\n- Earthquake\n\nExcadrill\nAbility: Sand Rush\nLevel: 53\nEVs: 252 Atk / 4 SpD / 252 Spe\nAdamant Nature\n- Earthquake\n- Iron Head\n- Rock Slide\n- Rapid Spin"
-  }
+  "mode": "singles",
+  "gen": "gen9",
+  "p1": {"team": "Pikachu @ Light Ball\nAbility: Static\nLevel: 50\n- Thunderbolt\n- Quick Attack"},
+  "p2": {"team": "Blastoise\nAbility: Torrent\nLevel: 50\n- Water Pulse\n- Ice Beam"}
 }
 [pkbattleend]
+```
 
+mode 为 singles 或 doubles；gen 为 gen9 或 gen8。Gen 8 提供极巨化，具体能否使用由引擎请求决定。输出后点击消息下的“遭遇战”按钮。
 
-补充：
-目前没有做双打、极巨化等。
+## 结算行为
+
+结算后保留原插件的交互方式：填入酒馆输入框并点击发送来继续剧情。手动关闭战斗不发送战报。现有输入框草稿、生成中的酒馆会话等实际交互请在发布前按验收清单确认。
+
+## 验证范围
+
+详见 RELEASE-NOTES.md。本地自动测试和模拟宿主可以验证核心交互；未宣称已在真实 SillyTavern 的所有版本及主题中验收。建议先在测试聊天中安装并完成一局，再给正式角色卡使用。
+
+## 修改源码与重建
+
+需要 Node.js/npm。在项目根目录运行：
+
+```sh
+npm ci --prefix source/engine
+node source/build-release.mjs
+node --test source/engine/tests/*.test.mjs
+```
+
+source/engine 内是本次构建所用的引擎源码与锁文件。根目录 index.js、battle-host.mjs、style.css 和 manifest.json 是宿主端源码，可直接编辑。
+
+图片素材仍可能请求外部宝可梦精灵图；网络不可用时有后备图标。计算引擎在本地运行不等于全部图片已离线打包。
